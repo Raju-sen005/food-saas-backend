@@ -1,12 +1,18 @@
-const Order = require('../models/Order');
-const { getIO } = require('../services/socketService');
-const axios = require('axios');
+const Order = require("../models/Order");
+const { getIO } = require("../services/socketService");
+const axios = require("axios");
 
 // 🚀 1. PROFESSIONAL DYNAMIC WHATSAPP HANDLER (4 VARIABLES)
-const sendOfficialWhatsAppNotification = async (customerPhone, customerName, orderId, restaurantName, rejectReason) => {
+const sendOfficialWhatsAppNotification = async (
+  customerPhone,
+  customerName,
+  orderId,
+  restaurantName,
+  rejectReason,
+) => {
   try {
-    let formattedPhone = customerPhone.replace(/\D/g, '');
-    if (!formattedPhone.startsWith('91')) {
+    let formattedPhone = customerPhone.replace(/\D/g, "");
+    if (!formattedPhone.startsWith("91")) {
       formattedPhone = `91${formattedPhone}`;
     }
 
@@ -32,28 +38,33 @@ const sendOfficialWhatsAppNotification = async (customerPhone, customerName, ord
             {
               type: "body",
               parameters: [
-                { type: "text", text: customerName },     // {{1}}
-                { type: "text", text: orderId },          // {{2}}
-                { type: "text", text: restaurantName },   // {{3}} 👈 Naya dynamic variable attach ho gaya
-                { type: "text", text: rejectReason || "High order volume" } // {{4}}
-              ]
-            }
-          ]
-        }
+                { type: "text", text: customerName }, // {{1}}
+                { type: "text", text: orderId }, // {{2}}
+                { type: "text", text: restaurantName }, // {{3}} 👈 Naya dynamic variable attach ho gaya
+                { type: "text", text: rejectReason || "High order volume" }, // {{4}}
+              ],
+            },
+          ],
+        },
       },
       {
         headers: {
-          'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      }
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      },
     );
 
     if (response.status === 200 || response.status === 201) {
-      console.log(`🚀 Professional Notification successfully fired to: ${formattedPhone}`);
+      console.log(
+        `🚀 Professional Notification successfully fired to: ${formattedPhone}`,
+      );
     }
   } catch (error) {
-    console.error("❌ Meta API Core Pipeline Error:", error.response?.data || error.message);
+    console.error(
+      "❌ Meta API Core Pipeline Error:",
+      error.response?.data || error.message,
+    );
   }
 };
 
@@ -63,11 +74,52 @@ const generateReadableOrderId = () => {
   return `#ORD-${code}`;
 };
 
+// Utility to decode
+const decodeTableToken = (token) => {
+  try {
+    const decoded = atob(token); // Decoding base64
+    const parts = decoded.split("-TABLE-");
+    return parts[1]; // Returns the table number
+  } catch (e) {
+    return null;
+  }
+};
+
 // @desc    Guest customer placing checkout cart objects
 // @route   POST /api/v1/orders/place
 exports.placeOrder = async (req, res) => {
   try {
-    const { restaurantId, customerName, customerPhone, orderType, items, subtotal, tax, total, deliveryAddress } = req.body;
+    const {
+      restaurantId,
+      customerName,
+      customerPhone,
+      orderType,
+      items,
+      subtotal,
+      tax,
+      total,
+      deliveryAddress,
+      tableToken, // 💡 Yahan token receive hoga
+    } = req.body;
+
+    // Token se table number decode karein
+    const decodedTable = decodeTableToken(tableToken);
+
+    // ✅ Order CREATE karne se PEHLE check karein
+    if (decodedTable !== "N/A") {
+      const existingOrder = await Order.findOne({
+        restaurantId,
+        tableNumber: decodedTable,
+        status: { $in: ["ACCEPTED", "PENDING"] },
+      });
+
+      if (existingOrder) {
+        return res.status(400).json({
+          success: false,
+          message: `Table ${decodedTable} is already occupied. Please bill it first.`,
+        });
+      }
+    }
 
     const newOrder = await Order.create({
       restaurantId,
@@ -75,17 +127,22 @@ exports.placeOrder = async (req, res) => {
       customerName,
       customerPhone,
       orderType,
-      deliveryAddress: deliveryAddress || '', 
+      tableNumber: decodedTable || "N/A", // 💡 Decoded value use karein
+      deliveryAddress: deliveryAddress || "",
       items,
       subtotal: Number(subtotal),
       tax: Number(tax) || 0,
-      total: Number(total)
+      total: Number(total),
     });
 
     const io = getIO();
-    io.to(restaurantId.toString()).emit('NEW_ORDER_RECEIVED', newOrder);
+    io.to(restaurantId.toString()).emit("NEW_ORDER_RECEIVED", newOrder);
 
-    res.status(201).json({ success: true, message: "Order placed successfully", order: newOrder });
+    res.status(201).json({
+      success: true,
+      message: "Order placed successfully",
+      order: newOrder,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -96,43 +153,62 @@ exports.placeOrder = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { status, rejectReason } = req.body;
-    
+
     // 💡 Added .populate() to safely pull restaurant details from MongoDB
-    const order = await Order.findOne({ _id: req.params.id, restaurantId: req.restaurantId }).populate('restaurantId');
-    if (!order) return res.status(404).json({ success: false, message: "Order records not found" });
+    const order = await Order.findOne({
+      _id: req.params.id,
+      restaurantId: req.restaurantId,
+    }).populate("restaurantId");
+    if (!order)
+      return res
+        .status(404)
+        .json({ success: false, message: "Order records not found" });
 
     order.status = status;
-    if (status === 'REJECTED' && rejectReason) {
+    if (status === "REJECTED" && rejectReason) {
       order.rejectReason = rejectReason;
     }
-    
+
     await order.save();
 
     // Broadcast updated status directly to the customer tracker channel room
     const io = getIO();
-    io.to(order._id.toString()).emit('ORDER_STATUS_UPDATED', {
+    io.to(order._id.toString()).emit("ORDER_STATUS_UPDATED", {
       orderId: order.orderId,
       status: order.status,
-      rejectReason: order.rejectReason
+      rejectReason: order.rejectReason,
     });
 
     // ⚡ CALLING THE NEW 4-VARIABLE HANDLER
-    if (status && (status.toUpperCase() === 'REJECTED' || status.toUpperCase() === 'DECLINED')) {
-      console.log(`🎯 Professional Rejection pipeline active for order ${order.orderId}...`);
-      
+    if (
+      status &&
+      (status.toUpperCase() === "REJECTED" ||
+        status.toUpperCase() === "DECLINED")
+    ) {
+      console.log(
+        `🎯 Professional Rejection pipeline active for order ${order.orderId}...`,
+      );
+
       // 💡 Safely extracts the dynamic restaurant name from populated data
-      const currentRestaurantName = (order.restaurantId && order.restaurantId.name) ? order.restaurantId.name : "Our Kitchen";
+      const currentRestaurantName =
+        order.restaurantId && order.restaurantId.name
+          ? order.restaurantId.name
+          : "Our Kitchen";
 
       sendOfficialWhatsAppNotification(
         order.customerPhone,
         order.customerName,
         order.orderId,
         currentRestaurantName, // Live dynamic name goes to {{3}}
-        order.rejectReason || "High order volume"
+        order.rejectReason || "High order volume",
       );
     }
 
-    res.status(200).json({ success: true, message: `Order marked as ${status}`, data: order });
+    res.status(200).json({
+      success: true,
+      message: `Order marked as ${status}`,
+      data: order,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -148,15 +224,32 @@ exports.getLiveAdminOrders = async (req, res) => {
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
-    const liveOrders = await Order.find({ 
+    const liveOrders = await Order.find({
       restaurantId: req.restaurantId,
       createdAt: {
         $gte: startOfToday,
-        $lte: endOfToday
-      }
+        $lte: endOfToday,
+      },
     }).sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, count: liveOrders.length, data: liveOrders });
+    res
+      .status(200)
+      .json({ success: true, count: liveOrders.length, data: liveOrders });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Complete Order & Free the Table
+// @route   PATCH /api/v1/orders/:id/complete
+exports.completeOrder = async (req, res) => {
+  try {
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { status: "COMPLETED" },
+      { new: true },
+    );
+    res.status(200).json({ success: true, message: "Table is now free!" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

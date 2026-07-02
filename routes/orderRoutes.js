@@ -4,6 +4,7 @@ const {
   placeOrder,
   updateOrderStatus,
   getLiveAdminOrders,
+  completeOrder,
 } = require("../controllers/orderController");
 const { protect, authorize } = require("../middleware/auth");
 const tenantContext = require("../middleware/tenant");
@@ -25,6 +26,15 @@ router.patch(
   authorize("OWNER", "MANAGER", "STAFF"),
   tenantContext,
   updateOrderStatus,
+);
+
+// Naya route add karein
+router.patch(
+  "/:id/complete",
+  protect,
+  authorize("OWNER", "MANAGER", "STAFF"),
+  tenantContext,
+  completeOrder,
 );
 
 module.exports = router;
