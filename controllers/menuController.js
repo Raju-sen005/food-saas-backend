@@ -1,4 +1,5 @@
 const MenuItem = require('../models/MenuItem');
+const Restaurant = require('../models/Restaurant'); // Restaurant model import karein
 const Combo = require('../models/Combo');
 // const cloudinary = require('../config/cloudinary');
 
@@ -84,7 +85,16 @@ exports.createCombo = async (req, res) => {
 exports.getPublicCatalog = async (req, res) => {
   try {
     const { restaurantId } = req.params; // Front-end entry passes this from the initial public slug payload resolve
+// 1. Parallel fetch: Restaurant details + Menu Items + Combos
+    const [restaurant] = await Promise.all([
+      Restaurant.findById(restaurantId),
+      // MenuItem.find({ restaurantId, isAvailable: true }),
+      // Combo.find({ restaurantId, isAvailable: true }).populate('items', 'name price image')
+    ]);
 
+    if (!restaurant) {
+      return res.status(404).json({ success: false, message: "Restaurant not found" });
+    }
     const activeItems = await MenuItem.find({ restaurantId, isAvailable: true });
     const activeCombos = await Combo.find({ restaurantId, isAvailable: true }).populate('items', 'name price image');
 
@@ -98,6 +108,12 @@ exports.getPublicCatalog = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
+        restaurant: {
+            name: restaurant.name,
+            address: restaurant.address,
+            logo: restaurant.logo,
+            timings: restaurant.timings
+        },
         categories: groupedMenu,
         combos: activeCombos
       }

@@ -16,7 +16,9 @@ const restaurantSchema = new mongoose.Schema({
   qrCodeUrl: { type: String, default: "" },
   subscriptionPlan: { type: String, enum: ['STARTER', 'PRO', 'ENTERPRISE'], default: 'STARTER' },
   subscriptionStatus: { type: String, enum: ['ACTIVE', 'PAST_DUE', 'CANCELED'], default: 'ACTIVE' },
-  isActive: { type: Boolean, default: true }
+  isActive: { type: Boolean, default: true },
+  // restaurantSchema mein add karein
+isApproved: { type: Boolean, default: false }
 }, { timestamps: true });
 
 // Index for ultra-fast slug lookup when customers scan QR code

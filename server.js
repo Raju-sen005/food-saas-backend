@@ -5,12 +5,14 @@ const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const { initSocket } = require('./services/socketService'); // <-- NEW Socket Loader
+const { protect, restrictTo } = require('./middleware/auth'); // Path check kar lein
 
 // Load endpoints variants
 const authRoutes = require('./routes/authRoutes');
 const restaurantRoutes = require('./routes/restaurantRoutes');
 const menuRoutes = require('./routes/menuRoutes');
 const orderRoutes = require('./routes/orderRoutes'); // <-- NEW Route
+const adminRoutes = require('./routes/adminRoutes'); // Nayi file banayein
 
 dotenv.config();
 connectDB();
@@ -30,6 +32,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/restaurant', restaurantRoutes);
 app.use('/api/v1/menu', menuRoutes);
 app.use('/api/v1/orders', orderRoutes); // <-- NEW MOUNT INTERFACE
+app.use('/api/v1/admin', protect, restrictTo('SUPERADMIN'), adminRoutes);
 
 const PORT = process.env.PORT || 5000;
 // CRITICAL: Ab app.listen nahi, balki server.listen hook call karna hai!
