@@ -80,6 +80,16 @@ exports.createCombo = async (req, res) => {
   }
 };
 
+
+exports.getAdminCombos = async (req, res) => {
+  try {
+    const combos = await Combo.find(); // Aapka model name
+    res.status(200).json({ status: 'success', data: combos });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+};
+
 // --- PUBLIC VIEWING TARGETS (FOR QR SCANNING CUSTOMERS) ---
 
 exports.getPublicCatalog = async (req, res) => {

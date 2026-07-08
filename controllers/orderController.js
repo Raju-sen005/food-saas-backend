@@ -74,14 +74,14 @@ const generateReadableOrderId = () => {
   return `#ORD-${code}`;
 };
 
-// Utility to decode
+// Utility update
 const decodeTableToken = (token) => {
   try {
-    const decoded = atob(token); // Decoding base64
-    const parts = decoded.split("-TABLE-");
-    return parts[1]; // Returns the table number
+    const decoded = atob(token);
+    if (!decoded.includes("-TABLE-")) return "N/A"; // Security check
+    return decoded.split("-TABLE-")[1];
   } catch (e) {
-    return null;
+    return "N/A";
   }
 };
 
@@ -121,6 +121,17 @@ exports.placeOrder = async (req, res) => {
       }
     }
 
+    if (
+      orderType === "DELIVERY" &&
+      (!deliveryAddress || deliveryAddress.length < 5)
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Delivery address is required for delivery orders",
+        });
+    }
     const newOrder = await Order.create({
       restaurantId,
       orderId: generateReadableOrderId(),
@@ -249,6 +260,11 @@ exports.completeOrder = async (req, res) => {
       { status: "COMPLETED" },
       { new: true },
     );
+
+    // Broadcast to dashboard to update UI
+    const io = getIO();
+    io.to(order.restaurantId.toString()).emit("ORDER_STATUS_UPDATED", order);
+
     res.status(200).json({ success: true, message: "Table is now free!" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
