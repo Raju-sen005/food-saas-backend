@@ -5,7 +5,7 @@ const Order = require("../models/Order");
 //   try {
 //     // 1. Debugging: Check karo ki req.restaurantId aa raha hai ya nahi
 //     console.log("Restaurant ID from req:", req.restaurantId);
-    
+
 //     // Mongoose ObjectId convert karein
 //     const rId = new mongoose.Types.ObjectId(req.restaurantId);
 
@@ -14,14 +14,14 @@ const Order = require("../models/Order");
 //       { $match: { restaurantId: rId } }, // Yahan match ho raha hai
 //       { $group: {
 //           _id: null,
-//           today: { 
-//             $sum: { 
+//           today: {
+//             $sum: {
 //               $cond: [
-//                 { $eq: [{ $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, new Date().toISOString().split("T")[0]] }, 
-//                 "$total", 
+//                 { $eq: [{ $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, new Date().toISOString().split("T")[0]] },
+//                 "$total",
 //                 0
-//               ] 
-//             } 
+//               ]
+//             }
 //           },
 //           totalRevenue: { $sum: "$total" },
 //           totalOrders: { $sum: 1 }
@@ -59,12 +59,29 @@ exports.getDashboardStats = async (req, res) => {
     // 1. Stats (Revenue & Total Orders)
     const stats = await Order.aggregate([
       { $match: { restaurantId: rId } },
-      { $group: {
+      {
+        $group: {
           _id: null,
-          today: { $sum: { $cond: [{ $eq: [{ $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, new Date().toISOString().split("T")[0]] }, "$total", 0] } },
+          today: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    {
+                      $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                    },
+                    new Date().toISOString().split("T")[0],
+                  ],
+                },
+                "$total",
+                0,
+              ],
+            },
+          },
           totalRevenue: { $sum: "$total" },
-          totalOrders: { $sum: 1 }
-      }}
+          totalOrders: { $sum: 1 },
+        },
+      },
     ]);
 
     // 2. Top Selling Items
@@ -73,7 +90,7 @@ exports.getDashboardStats = async (req, res) => {
       { $unwind: "$items" },
       { $group: { _id: "$items.name", count: { $sum: "$items.quantity" } } },
       { $sort: { count: -1 } },
-      { $limit: 5 }
+      { $limit: 5 },
     ]);
 
     // 3. Weekly Trend (Last 7 days)
@@ -81,17 +98,37 @@ exports.getDashboardStats = async (req, res) => {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const weeklyTrend = await Order.aggregate([
       { $match: { restaurantId: rId, createdAt: { $gte: sevenDaysAgo } } },
-      { $group: { 
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, 
-          sales: { $sum: "$total" } 
-      }},
-      { $sort: { "_id": 1 } }
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          sales: { $sum: "$total" },
+        },
+      },
+      { $sort: { _id: 1 } },
     ]);
 
     // 4. Table Stats
     const tableStats = await Order.aggregate([
       { $match: { restaurantId: rId } },
-      { $group: { _id: "$tableNumber", orderCount: { $sum: 1 } } }
+      { $group: { _id: "$tableNumber", orderCount: { $sum: 1 } } },
+    ]);
+
+    // 5. NEW: Hourly Stats (India Timezone: +5.5 hours = 19800000ms)
+    const hourlyStats = await Order.aggregate([
+      { $match: { restaurantId: rId } },
+      {
+        $project: {
+          // Timezone adjustment for IST
+          hour: { $hour: { $add: ["$createdAt", 19800000] } },
+        },
+      },
+      {
+        $group: {
+          _id: "$hour",
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
     ]);
 
     res.status(200).json({
@@ -100,8 +137,12 @@ exports.getDashboardStats = async (req, res) => {
         revenueStats: stats[0] || { today: 0, totalRevenue: 0, totalOrders: 0 },
         tableStats,
         topItems,
-        weeklyTrend: weeklyTrend.map(item => ({ day: item._id, sales: item.sales }))
-      }
+        weeklyTrend: weeklyTrend.map((item) => ({
+          day: item._id,
+          sales: item.sales,
+        })),
+        hourlyStats,
+      },
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
