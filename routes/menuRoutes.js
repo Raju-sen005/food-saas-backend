@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { 
   createMenuItem, getAdminMenuItems, updateMenuItem, deleteMenuItem, 
-  createCombo, getPublicCatalog, getAdminCombos
+  createCombo, getPublicCatalog, getAdminCombos,updateCombo,deleteCombo
 } = require('../controllers/menuController');
 const { protect, authorize } = require('../middleware/auth');
 const tenantContext = require('../middleware/tenant');
@@ -21,6 +21,10 @@ router.route('/admin/items/:id')
 router.post('/admin/combos', createCombo);
 // Agar sirf fetch karna hai:
 router.get('/admin/combos', getAdminCombos);
+// Change this line in router
+router.route('/admin/combos/:id')
+  .patch(updateCombo)
+  .delete(deleteCombo);
 // Open Customer Catalog endpoints
 router.get('/public/catalog/:restaurantId', getPublicCatalog);
 

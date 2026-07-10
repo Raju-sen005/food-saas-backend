@@ -1,6 +1,6 @@
-const MenuItem = require('../models/MenuItem');
-const Restaurant = require('../models/Restaurant'); // Restaurant model import karein
-const Combo = require('../models/Combo');
+const MenuItem = require("../models/MenuItem");
+const Restaurant = require("../models/Restaurant"); // Restaurant model import karein
+const Combo = require("../models/Combo");
 // const cloudinary = require('../config/cloudinary');
 
 // --- ADMIN MENU ACTIONS ---
@@ -16,7 +16,7 @@ exports.createMenuItem = async (req, res) => {
       category,
       description,
       price,
-      image: image || "" // Save directly as text URL
+      image: image || "", // Save directly as text URL
     });
 
     res.status(201).json({ success: true, data: item });
@@ -40,12 +40,15 @@ exports.updateMenuItem = async (req, res) => {
     const updates = { ...req.body }; // Image string text payload automatically parsed here
 
     const item = await MenuItem.findOneAndUpdate(
-      { _id: req.params.id, restaurantId: req.restaurantId }, 
+      { _id: req.params.id, restaurantId: req.restaurantId },
       { $set: updates },
-      { new: true }
+      { new: true },
     );
 
-    if (!item) return res.status(404).json({ success: false, message: "Item not found in your catalog" });
+    if (!item)
+      return res
+        .status(404)
+        .json({ success: false, message: "Item not found in your catalog" });
     res.status(200).json({ success: true, data: item });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -53,9 +56,17 @@ exports.updateMenuItem = async (req, res) => {
 };
 exports.deleteMenuItem = async (req, res) => {
   try {
-    const item = await MenuItem.findOneAndDelete({ _id: req.params.id, restaurantId: req.restaurantId });
-    if (!item) return res.status(404).json({ success: false, message: "Item not found" });
-    res.status(200).json({ success: true, message: "Menu item discarded successfully" });
+    const item = await MenuItem.findOneAndDelete({
+      _id: req.params.id,
+      restaurantId: req.restaurantId,
+    });
+    if (!item)
+      return res
+        .status(404)
+        .json({ success: false, message: "Item not found" });
+    res
+      .status(200)
+      .json({ success: true, message: "Menu item discarded successfully" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -65,14 +76,15 @@ exports.deleteMenuItem = async (req, res) => {
 
 exports.createCombo = async (req, res) => {
   try {
-    const { name, description, items, price, discount } = req.body;
+    const { name, description, items, price, discount,image } = req.body;
     const combo = await Combo.create({
       restaurantId: req.restaurantId,
       name,
       description,
       items, // Expects array of MenuItem ObjectIds
       price,
-      discount
+      discount,
+      image: image || "",
     });
     res.status(201).json({ success: true, data: combo });
   } catch (error) {
@@ -80,13 +92,13 @@ exports.createCombo = async (req, res) => {
   }
 };
 
-
 exports.getAdminCombos = async (req, res) => {
   try {
-    const combos = await Combo.find(); // Aapka model name
-    res.status(200).json({ status: 'success', data: combos });
+    // FIX: tenantContext ka use karein
+    const combos = await Combo.find({ restaurantId: req.restaurantId });
+    res.status(200).json({ success: true, count: combos.length, data: combos });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -95,7 +107,7 @@ exports.getAdminCombos = async (req, res) => {
 exports.getPublicCatalog = async (req, res) => {
   try {
     const { restaurantId } = req.params; // Front-end entry passes this from the initial public slug payload resolve
-// 1. Parallel fetch: Restaurant details + Menu Items + Combos
+    // 1. Parallel fetch: Restaurant details + Menu Items + Combos
     const [restaurant] = await Promise.all([
       Restaurant.findById(restaurantId),
       // MenuItem.find({ restaurantId, isAvailable: true }),
@@ -103,10 +115,18 @@ exports.getPublicCatalog = async (req, res) => {
     ]);
 
     if (!restaurant) {
-      return res.status(404).json({ success: false, message: "Restaurant not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Restaurant not found" });
     }
-    const activeItems = await MenuItem.find({ restaurantId, isAvailable: true });
-    const activeCombos = await Combo.find({ restaurantId, isAvailable: true }).populate('items', 'name price image');
+    const activeItems = await MenuItem.find({
+      restaurantId,
+      isAvailable: true,
+    });
+    const activeCombos = await Combo.find({
+      restaurantId,
+      isAvailable: true,
+    }).populate("items", "name price image");
 
     // Categorization layout aggregation structure compile karein response pipeline mein
     const groupedMenu = activeItems.reduce((acc, item) => {
@@ -119,15 +139,52 @@ exports.getPublicCatalog = async (req, res) => {
       success: true,
       data: {
         restaurant: {
-            name: restaurant.name,
-            address: restaurant.address,
-            logo: restaurant.logo,
-            timings: restaurant.timings
+          name: restaurant.name,
+          address: restaurant.address,
+          logo: restaurant.logo,
+          timings: restaurant.timings,
         },
         categories: groupedMenu,
-        combos: activeCombos
-      }
+        combos: activeCombos,
+      },
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// --- NEW: COMBO EDIT & DELETE ---
+
+exports.updateCombo = async (req, res) => {
+  try {
+    const combo = await Combo.findOneAndUpdate(
+      { _id: req.params.id, restaurantId: req.restaurantId },
+      { $set: req.body },
+      { new: true },
+    );
+    if (!combo)
+      return res
+        .status(404)
+        .json({ success: false, message: "Combo not found" });
+    res.status(200).json({ success: true, data: combo });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteCombo = async (req, res) => {
+  try {
+    const combo = await Combo.findOneAndDelete({
+      _id: req.params.id,
+      restaurantId: req.restaurantId,
+    });
+    if (!combo)
+      return res
+        .status(404)
+        .json({ success: false, message: "Combo not found" });
+    res
+      .status(200)
+      .json({ success: true, message: "Combo discarded successfully" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
