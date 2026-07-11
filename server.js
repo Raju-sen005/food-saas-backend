@@ -13,7 +13,7 @@ const menuRoutes = require('./routes/menuRoutes');
 const orderRoutes = require('./routes/orderRoutes'); // <-- NEW Route
 const adminRoutes = require('./routes/adminRoutes'); // Nayi file banayein
 const analyticsRoutes = require('./routes/analyticsRoutes')
-
+const offerRoutes = require("./routes/offerRoutes");
 dotenv.config();
 connectDB();
 
@@ -33,6 +33,7 @@ app.use('/api/v1/restaurant', restaurantRoutes);
 app.use('/api/v1/menu', menuRoutes);
 app.use('/api/v1/orders', orderRoutes); // <-- NEW MOUNT INTERFACE
 app.use('/api/v1/analytics', analyticsRoutes)
+app.use("/api/v1/offers", offerRoutes);
 app.use('/api/v1/admin', protect, restrictTo('SUPERADMIN'), adminRoutes);
 
 const PORT = process.env.PORT || 5000;

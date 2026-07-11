@@ -1,6 +1,7 @@
 const MenuItem = require("../models/MenuItem");
 const Restaurant = require("../models/Restaurant"); // Restaurant model import karein
 const Combo = require("../models/Combo");
+const Offer = require("../models/Offer"); // Offer model import karein
 // const cloudinary = require('../config/cloudinary');
 
 // --- ADMIN MENU ACTIONS ---
@@ -128,6 +129,10 @@ exports.getPublicCatalog = async (req, res) => {
       isAvailable: true,
     }).populate("items", "name price image");
 
+    const activeOffers = await Offer.find({
+      restaurantId,
+      isActive: true
+    })
     // Categorization layout aggregation structure compile karein response pipeline mein
     const groupedMenu = activeItems.reduce((acc, item) => {
       if (!acc[item.category]) acc[item.category] = [];
@@ -146,6 +151,7 @@ exports.getPublicCatalog = async (req, res) => {
         },
         categories: groupedMenu,
         combos: activeCombos,
+        offers: activeOffers, // <--- Frontend ko data bhej diya
       },
     });
   } catch (error) {
