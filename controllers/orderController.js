@@ -168,7 +168,7 @@ exports.updateOrderStatus = async (req, res) => {
     // 💡 Added .populate() to safely pull restaurant details from MongoDB
     const order = await Order.findOne({
       _id: req.params.id,
-      restaurantId: req.restaurantId,
+      restaurantId: req.user.restaurantId,
     }).populate("restaurantId");
     if (!order)
       return res
@@ -236,7 +236,7 @@ exports.getLiveAdminOrders = async (req, res) => {
     endOfToday.setHours(23, 59, 59, 999);
 
     const liveOrders = await Order.find({
-      restaurantId: req.restaurantId,
+      restaurantId: req.user.restaurantId,
       createdAt: {
         $gte: startOfToday,
         $lte: endOfToday,

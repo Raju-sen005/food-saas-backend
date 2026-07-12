@@ -17,7 +17,7 @@ exports.updateRestaurantProfile = async (req, res) => {
     }
 
     const updatedRestaurant = await Restaurant.findByIdAndUpdate(
-      req.restaurantId,
+      req.user.restaurantId,
       { $set: updates },
       { new: true, runValidators: true }
     );

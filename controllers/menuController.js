@@ -12,7 +12,7 @@ exports.createMenuItem = async (req, res) => {
     const { name, category, description, price, image } = req.body;
 
     const item = await MenuItem.create({
-      restaurantId: req.restaurantId,
+      restaurantId: req.user.restaurantId,
       name,
       category,
       description,
@@ -29,7 +29,7 @@ exports.createMenuItem = async (req, res) => {
 exports.getAdminMenuItems = async (req, res) => {
   try {
     // Encapsulation Check: Sirf login tenant ka hi items load hoga
-    const items = await MenuItem.find({ restaurantId: req.restaurantId });
+    const items = await MenuItem.find({ restaurantId: req.user.restaurantId });
     res.status(200).json({ success: true, count: items.length, data: items });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -41,7 +41,7 @@ exports.updateMenuItem = async (req, res) => {
     const updates = { ...req.body }; // Image string text payload automatically parsed here
 
     const item = await MenuItem.findOneAndUpdate(
-      { _id: req.params.id, restaurantId: req.restaurantId },
+      { _id: req.params.id, restaurantId: req.user.restaurantId },
       { $set: updates },
       { new: true },
     );
@@ -59,7 +59,7 @@ exports.deleteMenuItem = async (req, res) => {
   try {
     const item = await MenuItem.findOneAndDelete({
       _id: req.params.id,
-      restaurantId: req.restaurantId,
+      restaurantId: req.user.restaurantId,
     });
     if (!item)
       return res
@@ -79,7 +79,7 @@ exports.createCombo = async (req, res) => {
   try {
     const { name, description, items, price, discount,image } = req.body;
     const combo = await Combo.create({
-      restaurantId: req.restaurantId,
+      restaurantId: req.user.restaurantId,
       name,
       description,
       items, // Expects array of MenuItem ObjectIds
@@ -96,7 +96,7 @@ exports.createCombo = async (req, res) => {
 exports.getAdminCombos = async (req, res) => {
   try {
     // FIX: tenantContext ka use karein
-    const combos = await Combo.find({ restaurantId: req.restaurantId });
+    const combos = await Combo.find({ restaurantId: req.user.restaurantId });
     res.status(200).json({ success: true, count: combos.length, data: combos });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -164,7 +164,7 @@ exports.getPublicCatalog = async (req, res) => {
 exports.updateCombo = async (req, res) => {
   try {
     const combo = await Combo.findOneAndUpdate(
-      { _id: req.params.id, restaurantId: req.restaurantId },
+      { _id: req.params.id, restaurantId: req.user.restaurantId },
       { $set: req.body },
       { new: true },
     );
@@ -182,7 +182,7 @@ exports.deleteCombo = async (req, res) => {
   try {
     const combo = await Combo.findOneAndDelete({
       _id: req.params.id,
-      restaurantId: req.restaurantId,
+      restaurantId: req.user.restaurantId,
     });
     if (!combo)
       return res

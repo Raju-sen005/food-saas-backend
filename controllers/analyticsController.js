@@ -3,11 +3,11 @@ const Order = require("../models/Order");
 
 // exports.getDashboardStats = async (req, res) => {
 //   try {
-//     // 1. Debugging: Check karo ki req.restaurantId aa raha hai ya nahi
-//     console.log("Restaurant ID from req:", req.restaurantId);
+//     // 1. Debugging: Check karo ki req.user.restaurantId aa raha hai ya nahi
+//     console.log("Restaurant ID from req:", req.user.restaurantId);
 
 //     // Mongoose ObjectId convert karein
-//     const rId = new mongoose.Types.ObjectId(req.restaurantId);
+//     const rId = new mongoose.Types.ObjectId(req.user.restaurantId);
 
 //     // 2. Aggregate Pipeline
 //     const stats = await Order.aggregate([
@@ -54,7 +54,7 @@ const Order = require("../models/Order");
 
 exports.getDashboardStats = async (req, res) => {
   try {
-    const rId = new mongoose.Types.ObjectId(req.restaurantId);
+    const rId = new mongoose.Types.ObjectId(req.user.restaurantId);
 
     // 1. Stats (Revenue & Total Orders)
     const stats = await Order.aggregate([
