@@ -7,12 +7,12 @@ const generateTokenAndSetCookie = (res, userId) => {
     expiresIn: "7d",
   });
 
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  });
+ res.cookie('jwt', token, {
+  httpOnly: true,
+  secure: true,        // Render par HTTPS hota hai, isliye TRUE rakhein
+  sameSite: 'none',    // Cross-domain (Frontend/Backend alag) ke liye 'none' hi chahiye
+  maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+});
 
   return token;
 };
@@ -123,6 +123,11 @@ if (user.role !== 'SUPERADMIN' && !restaurant.isActive) {
 // @desc    Logout User / Clear Cookie
 // @route   POST /api/v1/auth/logout
 exports.logout = async (req, res) => {
-  res.cookie("token", "", { httpOnly: true, expires: new Date(0) });
+  res.cookie("jwt", "", { 
+    httpOnly: true, 
+    expires: new Date(0),
+    secure: true,      // Same config as login
+    sameSite: 'none' 
+  });
   res.status(200).json({ success: true, message: "Logged out successfully" });
 };
