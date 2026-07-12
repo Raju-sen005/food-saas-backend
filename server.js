@@ -29,12 +29,12 @@ app.use(cookieParser());
 
 // Base API endpoints mounts
 app.use('/auth', authRoutes);
-app.use('/api/v1/restaurant', restaurantRoutes);
-app.use('/api/v1/menu', menuRoutes);
-app.use('/api/v1/orders', orderRoutes); // <-- NEW MOUNT INTERFACE
-app.use('/api/v1/analytics', analyticsRoutes)
-app.use("/api/v1/offers", offerRoutes);
-app.use('/api/v1/admin', protect, restrictTo('SUPERADMIN'), adminRoutes);
+app.use('/restaurant', restaurantRoutes);
+app.use('/menu', menuRoutes);
+app.use('/orders', orderRoutes); // <-- NEW MOUNT INTERFACE
+app.use('/analytics', analyticsRoutes)
+app.use("/offers", offerRoutes);
+app.use('/admin', protect, restrictTo('SUPERADMIN'), adminRoutes);
 
 const PORT = process.env.PORT || 5000;
 // CRITICAL: Ab app.listen nahi, balki server.listen hook call karna hai!
