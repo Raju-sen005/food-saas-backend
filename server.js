@@ -23,8 +23,12 @@ const server = http.createServer(app); // <-- Attach express application to Nati
 // Initialize Socket.io cluster layer context injection mapping
 initSocket(server);
 
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(cors({ 
+  origin: "https://chotu-frontend-ngph.onrender.com", // Aapka frontend ka exact URL
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));app.use(express.json());
 app.use(cookieParser());
 
 // Base API endpoints mounts
