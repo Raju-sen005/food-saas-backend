@@ -28,7 +28,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Base API endpoints mounts
-app.use('/api/v1/auth', authRoutes);
+app.use('/auth', authRoutes);
 app.use('/api/v1/restaurant', restaurantRoutes);
 app.use('/api/v1/menu', menuRoutes);
 app.use('/api/v1/orders', orderRoutes); // <-- NEW MOUNT INTERFACE
