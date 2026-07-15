@@ -27,7 +27,7 @@ initSocket(server);
 
 // 🔑 Environment-driven CORS — comma-separated list of allowed origins in .env
 // e.g. ALLOWED_ORIGINS=http://localhost:5173,https://chotu-frontend-ngph.onrender.com
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5173")
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5173" || "https://chotu-frontend-ngph.onrender.com")
   .split(",")
   .map((o) => o.trim());
 
