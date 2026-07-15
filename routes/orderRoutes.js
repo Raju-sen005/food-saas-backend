@@ -6,35 +6,13 @@ const {
   getLiveAdminOrders,
   completeOrder,
 } = require("../controllers/orderController");
-const { protect, authorize } = require("../middleware/auth");
+const { protect, restrictTo } = require("../middleware/auth");
 const tenantContext = require("../middleware/tenant");
 
-// Public checkout route interface target
 router.post("/place", placeOrder);
 
-// Admin-isolated real-time state manipulation pipeline interfaces
-router.get(
-  "/live",
-  protect,
-  authorize("OWNER", "MANAGER", "STAFF"),
-  tenantContext,
-  getLiveAdminOrders,
-);
-router.patch(
-  "/:id/status",
-  protect,
-  authorize("OWNER", "MANAGER", "STAFF"),
-  tenantContext,
-  updateOrderStatus,
-);
-
-// Naya route add karein
-router.patch(
-  "/:id/complete",
-  protect,
-  authorize("OWNER", "MANAGER", "STAFF"),
-  tenantContext,
-  completeOrder,
-);
+router.get("/live", protect, restrictTo('OWNER', 'STAFF'), tenantContext, getLiveAdminOrders);
+router.patch("/:id/status", protect, restrictTo('OWNER', 'STAFF'), tenantContext, updateOrderStatus);
+router.patch("/:id/complete", protect, restrictTo('OWNER', 'STAFF'), tenantContext, completeOrder);
 
 module.exports = router;

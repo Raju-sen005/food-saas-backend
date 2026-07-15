@@ -1,197 +1,184 @@
 const MenuItem = require("../models/MenuItem");
-const Restaurant = require("../models/Restaurant"); // Restaurant model import karein
+const Restaurant = require("../models/Restaurant");
 const Combo = require("../models/Combo");
-const Offer = require("../models/Offer"); // Offer model import karein
-// const cloudinary = require('../config/cloudinary');
+const Offer = require("../models/Offer");
+const asyncHandler = require("../utils/asyncHandler");
 
 // --- ADMIN MENU ACTIONS ---
 
-exports.createMenuItem = async (req, res) => {
-  try {
-    // Frontend se seedhe 'image' field mein URL string aayegi
-    const { name, category, description, price, image } = req.body;
+exports.createMenuItem = asyncHandler(async (req, res) => {
+  const { name, category, description, price, image } = req.body;
 
-    const item = await MenuItem.create({
-      restaurantId: req.user.restaurantId,
-      name,
-      category,
-      description,
-      price,
-      image: image || "", // Save directly as text URL
-    });
-
-    res.status(201).json({ success: true, data: item });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+  if (!name || !category || price === undefined) {
+    return res.status(400).json({ success: false, message: "Name, category and price are required" });
   }
-};
 
-exports.getAdminMenuItems = async (req, res) => {
-  try {
-    // Encapsulation Check: Sirf login tenant ka hi items load hoga
-    const items = await MenuItem.find({ restaurantId: req.user.restaurantId });
-    res.status(200).json({ success: true, count: items.length, data: items });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+  const numericPrice = Number(price);
+  if (Number.isNaN(numericPrice) || numericPrice < 0) {
+    return res.status(400).json({ success: false, message: "Price must be a valid non-negative number" });
   }
-};
 
-exports.updateMenuItem = async (req, res) => {
-  try {
-    const updates = { ...req.body }; // Image string text payload automatically parsed here
+  const item = await MenuItem.create({
+    restaurantId: req.user.restaurantId,
+    name: name.trim(),
+    category: category.trim(),
+    description: description?.trim() || "",
+    price: numericPrice,
+    image: image || "",
+  });
 
-    const item = await MenuItem.findOneAndUpdate(
-      { _id: req.params.id, restaurantId: req.user.restaurantId },
-      { $set: updates },
-      { new: true },
-    );
+  res.status(201).json({ success: true, data: item });
+});
 
-    if (!item)
-      return res
-        .status(404)
-        .json({ success: false, message: "Item not found in your catalog" });
-    res.status(200).json({ success: true, data: item });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+exports.getAdminMenuItems = asyncHandler(async (req, res) => {
+  const items = await MenuItem.find({ restaurantId: req.user.restaurantId }).sort({ createdAt: -1 });
+  res.status(200).json({ success: true, count: items.length, data: items });
+});
+
+exports.updateMenuItem = asyncHandler(async (req, res) => {
+  const updates = { ...req.body };
+
+  // 🔑 restaurantId ko update payload se explicitly hata do — koi accidentally/maliciously
+  // apna item kisi doosre tenant ko transfer na kar sake
+  delete updates.restaurantId;
+
+  if (updates.price !== undefined) {
+    const numericPrice = Number(updates.price);
+    if (Number.isNaN(numericPrice) || numericPrice < 0) {
+      return res.status(400).json({ success: false, message: "Price must be a valid non-negative number" });
+    }
+    updates.price = numericPrice;
   }
-};
-exports.deleteMenuItem = async (req, res) => {
-  try {
-    const item = await MenuItem.findOneAndDelete({
-      _id: req.params.id,
-      restaurantId: req.user.restaurantId,
-    });
-    if (!item)
-      return res
-        .status(404)
-        .json({ success: false, message: "Item not found" });
-    res
-      .status(200)
-      .json({ success: true, message: "Menu item discarded successfully" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+
+  const item = await MenuItem.findOneAndUpdate(
+    { _id: req.params.id, restaurantId: req.user.restaurantId },
+    { $set: updates },
+    { new: true, runValidators: true },
+  );
+
+  if (!item) {
+    return res.status(404).json({ success: false, message: "Item not found in your catalog" });
   }
-};
+  res.status(200).json({ success: true, data: item });
+});
+
+exports.deleteMenuItem = asyncHandler(async (req, res) => {
+  const item = await MenuItem.findOneAndDelete({
+    _id: req.params.id,
+    restaurantId: req.user.restaurantId,
+  });
+  if (!item) {
+    return res.status(404).json({ success: false, message: "Item not found" });
+  }
+  res.status(200).json({ success: true, message: "Menu item discarded successfully" });
+});
 
 // --- COMBO ACTIONS ---
 
-exports.createCombo = async (req, res) => {
-  try {
-    const { name, description, items, price, discount,image } = req.body;
-    const combo = await Combo.create({
-      restaurantId: req.user.restaurantId,
-      name,
-      description,
-      items, // Expects array of MenuItem ObjectIds
-      price,
-      discount,
-      image: image || "",
-    });
-    res.status(201).json({ success: true, data: combo });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
+exports.createCombo = asyncHandler(async (req, res) => {
+  const { name, description, items, price, discount, image } = req.body;
 
-exports.getAdminCombos = async (req, res) => {
-  try {
-    // FIX: tenantContext ka use karein
-    const combos = await Combo.find({ restaurantId: req.user.restaurantId });
-    res.status(200).json({ success: true, count: combos.length, data: combos });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+  if (!name || !Array.isArray(items) || items.length === 0 || price === undefined) {
+    return res.status(400).json({ success: false, message: "Name, items and price are required" });
   }
-};
+
+  // 🔑 Combo ke items bhi apne hi tenant ke hone chahiye — cross-tenant item ID injection na ho
+  const validCount = await MenuItem.countDocuments({
+    _id: { $in: items },
+    restaurantId: req.user.restaurantId,
+  });
+  if (validCount !== items.length) {
+    return res.status(400).json({ success: false, message: "One or more items are invalid" });
+  }
+
+  const combo = await Combo.create({
+    restaurantId: req.user.restaurantId,
+    name: name.trim(),
+    description: description?.trim() || "",
+    items,
+    price: Number(price),
+    discount: Number(discount) || 0,
+    image: image || "",
+  });
+  res.status(201).json({ success: true, data: combo });
+});
+
+exports.getAdminCombos = asyncHandler(async (req, res) => {
+  const combos = await Combo.find({ restaurantId: req.user.restaurantId }).sort({ createdAt: -1 });
+  res.status(200).json({ success: true, count: combos.length, data: combos });
+});
 
 // --- PUBLIC VIEWING TARGETS (FOR QR SCANNING CUSTOMERS) ---
 
-exports.getPublicCatalog = async (req, res) => {
-  try {
-    const { restaurantId } = req.params; // Front-end entry passes this from the initial public slug payload resolve
-    // 1. Parallel fetch: Restaurant details + Menu Items + Combos
-    const [restaurant] = await Promise.all([
-      Restaurant.findById(restaurantId),
-      // MenuItem.find({ restaurantId, isAvailable: true }),
-      // Combo.find({ restaurantId, isAvailable: true }).populate('items', 'name price image')
-    ]);
+exports.getPublicCatalog = asyncHandler(async (req, res) => {
+  const { restaurantId } = req.params;
 
-    if (!restaurant) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Restaurant not found" });
-    }
-    const activeItems = await MenuItem.find({
-      restaurantId,
-      isAvailable: true,
-    });
-    const activeCombos = await Combo.find({
-      restaurantId,
-      isAvailable: true,
-    }).populate("items", "name price image");
+  const restaurant = await Restaurant.findById(restaurantId).select(
+    "name address logo timings isActive"
+  );
 
-    const activeOffers = await Offer.find({
-      restaurantId,
-      isActive: true
-    })
-    // Categorization layout aggregation structure compile karein response pipeline mein
-    const groupedMenu = activeItems.reduce((acc, item) => {
-      if (!acc[item.category]) acc[item.category] = [];
-      acc[item.category].push(item);
-      return acc;
-    }, {});
+  if (!restaurant) {
+    return res.status(404).json({ success: false, message: "Restaurant not found" });
+  }
 
-    res.status(200).json({
-      success: true,
-      data: {
-        restaurant: {
-          name: restaurant.name,
-          address: restaurant.address,
-          logo: restaurant.logo,
-          timings: restaurant.timings,
-        },
-        categories: groupedMenu,
-        combos: activeCombos,
-        offers: activeOffers, // <--- Frontend ko data bhej diya
+  // 🔑 Blocked restaurant ka menu public customers ko serve nahi hona chahiye
+  if (!restaurant.isActive) {
+    return res.status(403).json({ success: false, message: "This restaurant is currently unavailable" });
+  }
+
+  // 🔑 Teeno queries parallel — pehle sequential the, response time slow tha
+  const [activeItems, activeCombos, activeOffers] = await Promise.all([
+    MenuItem.find({ restaurantId, isAvailable: true }),
+    Combo.find({ restaurantId, isAvailable: true }).populate("items", "name price image"),
+    Offer.find({ restaurantId, isActive: true }),
+  ]);
+
+  const groupedMenu = activeItems.reduce((acc, item) => {
+    if (!acc[item.category]) acc[item.category] = [];
+    acc[item.category].push(item);
+    return acc;
+  }, {});
+
+  res.status(200).json({
+    success: true,
+    data: {
+      restaurant: {
+        name: restaurant.name,
+        address: restaurant.address,
+        logo: restaurant.logo,
+        timings: restaurant.timings,
       },
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
+      categories: groupedMenu,
+      combos: activeCombos,
+      offers: activeOffers,
+    },
+  });
+});
 
-// --- NEW: COMBO EDIT & DELETE ---
+// --- COMBO EDIT & DELETE ---
 
-exports.updateCombo = async (req, res) => {
-  try {
-    const combo = await Combo.findOneAndUpdate(
-      { _id: req.params.id, restaurantId: req.user.restaurantId },
-      { $set: req.body },
-      { new: true },
-    );
-    if (!combo)
-      return res
-        .status(404)
-        .json({ success: false, message: "Combo not found" });
-    res.status(200).json({ success: true, data: combo });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
+exports.updateCombo = asyncHandler(async (req, res) => {
+  const updates = { ...req.body };
+  delete updates.restaurantId;
 
-exports.deleteCombo = async (req, res) => {
-  try {
-    const combo = await Combo.findOneAndDelete({
-      _id: req.params.id,
-      restaurantId: req.user.restaurantId,
-    });
-    if (!combo)
-      return res
-        .status(404)
-        .json({ success: false, message: "Combo not found" });
-    res
-      .status(200)
-      .json({ success: true, message: "Combo discarded successfully" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+  const combo = await Combo.findOneAndUpdate(
+    { _id: req.params.id, restaurantId: req.user.restaurantId },
+    { $set: updates },
+    { new: true, runValidators: true },
+  );
+  if (!combo) {
+    return res.status(404).json({ success: false, message: "Combo not found" });
   }
-};
+  res.status(200).json({ success: true, data: combo });
+});
+
+exports.deleteCombo = asyncHandler(async (req, res) => {
+  const combo = await Combo.findOneAndDelete({
+    _id: req.params.id,
+    restaurantId: req.user.restaurantId,
+  });
+  if (!combo) {
+    return res.status(404).json({ success: false, message: "Combo not found" });
+  }
+  res.status(200).json({ success: true, message: "Combo discarded successfully" });
+});

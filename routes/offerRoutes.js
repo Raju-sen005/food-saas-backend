@@ -1,13 +1,13 @@
 const express = require("express");
 const router = express.Router();
 const { createOffer, getOffers, deleteOffer } = require("../controllers/offerController");
-const { protect } = require("../middleware/auth"); // Apne auth middleware ka path dein
+const { protect, restrictTo } = require("../middleware/auth");
 
 router.route("/")
   .get(protect, getOffers)
-  .post(protect, createOffer);
+  .post(protect, restrictTo('OWNER'), createOffer);
 
 router.route("/:id")
-  .delete(protect, deleteOffer);
+  .delete(protect, restrictTo('OWNER'), deleteOffer);
 
 module.exports = router;

@@ -1,31 +1,30 @@
 const express = require('express');
 const router = express.Router();
-const { 
-  createMenuItem, getAdminMenuItems, updateMenuItem, deleteMenuItem, 
-  createCombo, getPublicCatalog, getAdminCombos,updateCombo,deleteCombo
+const {
+  createMenuItem, getAdminMenuItems, updateMenuItem, deleteMenuItem,
+  createCombo, getPublicCatalog, getAdminCombos, updateCombo, deleteCombo,
 } = require('../controllers/menuController');
-const { protect, authorize } = require('../middleware/auth');
+const { protect, restrictTo } = require('../middleware/auth');
 const tenantContext = require('../middleware/tenant');
 
-// Admin CRUD management bindings (Bina multer middleware ke)
-router.use('/admin', protect, authorize('OWNER', 'MANAGER'), tenantContext);
+// 🔑 restrictTo ko roles ke saath CALL karo — bina call kiye pass karne se request hang ho jaati h
+router.use('/admin', protect, restrictTo('OWNER', 'STAFF'), tenantContext);
 
 router.route('/admin/items')
-  .post(createMenuItem)  // standard JSON endpoint
+  .post(createMenuItem)
   .get(getAdminMenuItems);
 
 router.route('/admin/items/:id')
-  .patch(updateMenuItem) // standard JSON endpoint
+  .patch(updateMenuItem)
   .delete(deleteMenuItem);
 
 router.post('/admin/combos', createCombo);
-// Agar sirf fetch karna hai:
 router.get('/admin/combos', getAdminCombos);
-// Change this line in router
+
 router.route('/admin/combos/:id')
   .patch(updateCombo)
   .delete(deleteCombo);
-// Open Customer Catalog endpoints
+
 router.get('/public/catalog/:restaurantId', getPublicCatalog);
 
 module.exports = router;

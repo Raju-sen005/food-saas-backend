@@ -1,19 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth'); // Aapka existing middleware
-const { restrictTo } = require('../middleware/auth');
-const { getAllRestaurants, toggleApproval } = require('../controllers/adminController');
-const Restaurant = require('../models/Restaurant');
+const { protect, restrictTo } = require('../middleware/auth');
+const { getAllRestaurants, toggleApproval, toggleBlockStatus } = require('../controllers/adminController');
 
-// Sirf SuperAdmin access kar payega
 router.get('/restaurants', protect, restrictTo('SUPERADMIN'), getAllRestaurants);
 router.patch('/restaurants/:id/approve', protect, restrictTo('SUPERADMIN'), toggleApproval);
-// adminRoutes.js
-router.patch('/restaurants/:id/status', protect, restrictTo('SUPERADMIN'), async (req, res) => {
-  const { id } = req.params;
-  const updateData = req.body; // { isApproved: true } ya { isActive: false }
-  
-  await Restaurant.findByIdAndUpdate(id, updateData);
-  res.json({ success: true });
-});
+
+// 🔑 Duplicate inline logic hata di — pehle se bana hua toggleBlockStatus controller use karo,
+// jo already whitelist-safe h (sirf isActive field accept karta h) aur asyncHandler-wrapped h
+router.patch('/restaurants/:id/status', protect, restrictTo('SUPERADMIN'), toggleBlockStatus);
+
 module.exports = router;
