@@ -1,6 +1,7 @@
 const Order = require("../models/Order");
 const { getIO } = require("../services/socketService");
 const axios = require("axios");
+const mongoose = require("mongoose");
 
 // 🚀 1. PROFESSIONAL DYNAMIC WHATSAPP HANDLER (4 VARIABLES)
 const sendOfficialWhatsAppNotification = async (
@@ -268,5 +269,38 @@ exports.completeOrder = async (req, res) => {
     res.status(200).json({ success: true, message: "Table is now free!" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+exports.getBillingStats = async (req, res) => {
+  try {
+    const { filter } = req.query; 
+    const rId = new mongoose.Types.ObjectId(req.user.restaurantId);
+    
+    let startDate = new Date();
+
+    // Time calculations
+    if (filter === 'today') {
+        startDate.setHours(0, 0, 0, 0);
+    } else if (filter === 'week') {
+        startDate.setDate(startDate.getDate() - 7);
+    } else if (filter === 'month') {
+        startDate.setMonth(startDate.getMonth() - 1);
+    } else if (filter === 'year') {
+        startDate.setFullYear(startDate.getFullYear() - 1);
+    }
+
+    // Database Query
+    const bills = await Order.find({
+      restaurantId: rId,
+      status: 'COMPLETED', // Match this with your status string
+      createdAt: { $gte: startDate }
+    }).sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, data: bills });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };

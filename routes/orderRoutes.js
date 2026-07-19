@@ -5,12 +5,21 @@ const {
   updateOrderStatus,
   getLiveAdminOrders,
   completeOrder,
+  getBillingStats,
 } = require("../controllers/orderController");
 const { protect, authorize } = require("../middleware/auth");
 const tenantContext = require("../middleware/tenant");
 
 // Public checkout route interface target
 router.post("/place", placeOrder);
+
+router.get(
+  "/billing", 
+  protect, 
+  authorize("OWNER", "MANAGER", "STAFF"), 
+  tenantContext, 
+  getBillingStats
+);
 
 // Admin-isolated real-time state manipulation pipeline interfaces
 router.get(

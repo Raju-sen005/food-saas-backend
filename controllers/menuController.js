@@ -85,6 +85,7 @@ exports.createCombo = async (req, res) => {
       items, // Expects array of MenuItem ObjectIds
       price,
       discount,
+       category: "COMBO",
       image: image || "",
     });
     res.status(201).json({ success: true, data: combo });

@@ -8,6 +8,10 @@ const comboSchema = new mongoose.Schema({
   items: [{ type: mongoose.Schema.Types.ObjectId, ref: 'MenuItem', required: true }],
   price: { type: Number, required: true, min: 0 },
   discount: { type: Number, default: 0 }, // Optional display value for UI styling
+  category: {
+    type: String,
+    default: "COMBO",
+},
   isAvailable: { type: Boolean, default: true }
 }, { timestamps: true });
 
