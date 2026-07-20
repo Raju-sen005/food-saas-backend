@@ -55,10 +55,14 @@ const Order = require("../models/Order");
 exports.getDashboardStats = async (req, res) => {
   try {
     const rId = new mongoose.Types.ObjectId(req.user.restaurantId);
+    const baseMatch = {
+      restaurantId: rId,
+      status: { $in: ["COMPLETED"] },
+    };
 
     // 1. Stats (Revenue & Total Orders)
     const stats = await Order.aggregate([
-      { $match: { restaurantId: rId } },
+      { $match: baseMatch },
       {
         $group: {
           _id: null,
@@ -86,7 +90,7 @@ exports.getDashboardStats = async (req, res) => {
 
     // 2. Top Selling Items
     const topItems = await Order.aggregate([
-      { $match: { restaurantId: rId } },
+      { $match: baseMatch },
       { $unwind: "$items" },
       { $group: { _id: "$items.name", count: { $sum: "$items.quantity" } } },
       { $sort: { count: -1 } },
@@ -97,7 +101,12 @@ exports.getDashboardStats = async (req, res) => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const weeklyTrend = await Order.aggregate([
-      { $match: { restaurantId: rId, createdAt: { $gte: sevenDaysAgo } } },
+      {
+        $match: {
+          ...baseMatch,
+          createdAt: { $gte: sevenDaysAgo },
+        },
+      },
       {
         $group: {
           _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
@@ -109,13 +118,13 @@ exports.getDashboardStats = async (req, res) => {
 
     // 4. Table Stats
     const tableStats = await Order.aggregate([
-      { $match: { restaurantId: rId } },
+      { $match: baseMatch },
       { $group: { _id: "$tableNumber", orderCount: { $sum: 1 } } },
     ]);
 
     // 5. NEW: Hourly Stats (India Timezone: +5.5 hours = 19800000ms)
     const hourlyStats = await Order.aggregate([
-      { $match: { restaurantId: rId } },
+      { $match: baseMatch },
       {
         $project: {
           // Timezone adjustment for IST
