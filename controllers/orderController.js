@@ -70,9 +70,31 @@ const sendOfficialWhatsAppNotification = async (
 };
 
 // Helper to compile incremental algorithmic daily tokens (#RS-0001)
-const generateReadableOrderId = () => {
-  const code = Math.floor(1000 + Math.random() * 9000);
-  return `#ORD-${code}`;
+// 🚀 100% Safe Sequential Order ID Generator (Resets daily per restaurant)
+const generateReadableOrderId = async (restaurantId) => {
+  try {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const countToday = await Order.countDocuments({
+      restaurantId: restaurantId,
+      createdAt: { $gte: startOfToday },
+    });
+
+    // Current date nikal lein (YYMMDD format mein, e.g., 260721)
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const dateStr = `${yy}${mm}${dd}`;
+
+    const sequenceNumber = (countToday + 1).toString().padStart(3, "0");
+    
+    return `#${dateStr}-${sequenceNumber}`; // Output example: #260721-001
+  } catch (error) {
+    const randomFallback = Math.floor(1000 + Math.random() * 9000);
+    return `#ORD-${randomFallback}`;
+  }
 };
 
 // Utility update
@@ -126,16 +148,17 @@ exports.placeOrder = async (req, res) => {
       orderType === "DELIVERY" &&
       (!deliveryAddress || deliveryAddress.length < 5)
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Delivery address is required for delivery orders",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Delivery address is required for delivery orders",
+      });
     }
+
+    const uniqueOrderId = await generateReadableOrderId(restaurantId);
+
     const newOrder = await Order.create({
       restaurantId,
-      orderId: generateReadableOrderId(),
+      orderId: uniqueOrderId,
       customerName,
       customerPhone,
       orderType,
@@ -272,31 +295,29 @@ exports.completeOrder = async (req, res) => {
   }
 };
 
-
-
 exports.getBillingStats = async (req, res) => {
   try {
-    const { filter } = req.query; 
+    const { filter } = req.query;
     const rId = new mongoose.Types.ObjectId(req.user.restaurantId);
-    
+
     let startDate = new Date();
 
     // Time calculations
-    if (filter === 'today') {
-        startDate.setHours(0, 0, 0, 0);
-    } else if (filter === 'week') {
-        startDate.setDate(startDate.getDate() - 7);
-    } else if (filter === 'month') {
-        startDate.setMonth(startDate.getMonth() - 1);
-    } else if (filter === 'year') {
-        startDate.setFullYear(startDate.getFullYear() - 1);
+    if (filter === "today") {
+      startDate.setHours(0, 0, 0, 0);
+    } else if (filter === "week") {
+      startDate.setDate(startDate.getDate() - 7);
+    } else if (filter === "month") {
+      startDate.setMonth(startDate.getMonth() - 1);
+    } else if (filter === "year") {
+      startDate.setFullYear(startDate.getFullYear() - 1);
     }
 
     // Database Query
     const bills = await Order.find({
       restaurantId: rId,
-      status: 'COMPLETED', // Match this with your status string
-      createdAt: { $gte: startDate }
+      status: "COMPLETED", // Match this with your status string
+      createdAt: { $gte: startDate },
     }).sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, data: bills });
