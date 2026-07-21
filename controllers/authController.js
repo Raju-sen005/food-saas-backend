@@ -7,12 +7,12 @@ const generateTokenAndSetCookie = (res, userId) => {
     expiresIn: "7d",
   });
 
- res.cookie('jwt', token, {
-  httpOnly: true,
-  secure: true,        // Render par HTTPS hota hai, isliye TRUE rakhein
-  sameSite: 'none',    // Cross-domain (Frontend/Backend alag) ke liye 'none' hi chahiye
-  maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-});
+  res.cookie("jwt", token, {
+    httpOnly: true,
+    secure: true, // Render par HTTPS hota hai, isliye TRUE rakhein
+    sameSite: "none", // Cross-domain (Frontend/Backend alag) ke liye 'none' hi chahiye
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  });
 
   return token;
 };
@@ -75,6 +75,53 @@ exports.registerTenant = async (req, res) => {
 
 // @desc    Login User (Owner/Staff)
 // @route   POST /api/v1/auth/login
+// exports.login = async (req, res) => {
+//   const { email, password } = req.body;
+
+//   try {
+//     if (!email || !password)
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Please provide email and password" });
+
+//     const user = await User.findOne({ email });
+//     if (!user || !(await user.comparePassword(password))) {
+//       return res
+//         .status(401)
+//         .json({ success: false, message: "Invalid credentials" });
+//     }
+
+//    // controllers/authController.js
+
+// const restaurant = await Restaurant.findById(user.restaurantId);
+
+// // Check: Agar user SUPERADMIN nahi hai, TABHI isActive check karein
+// if (user.role !== 'SUPERADMIN' && !restaurant.isActive) {
+//   return res.status(403).json({
+//     success: false,
+//     message: "Your restaurant account is currently inactive. Please contact support for assistance.",
+//   });
+// }
+
+//     generateTokenAndSetCookie(res, user._id);
+
+//     res.status(200).json({
+//       success: true,
+//       data: {
+//         id: user._id,
+//         name: user.name,
+//         email: user.email,
+//         role: user.role,
+//         restaurantId: user.restaurantId,
+//       },
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+// @desc    Login User (Owner/Staff)
+// @route   POST /api/v1/auth/login
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
@@ -91,17 +138,34 @@ exports.login = async (req, res) => {
         .json({ success: false, message: "Invalid credentials" });
     }
 
-   // controllers/authController.js
+    const restaurant = await Restaurant.findById(user.restaurantId);
 
-const restaurant = await Restaurant.findById(user.restaurantId);
+    // Check: Agar user SUPERADMIN nahi hai, TABHI isActive check karein
+    if (user.role !== "SUPERADMIN" && !restaurant.isActive) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Your restaurant account is currently inactive. Please contact support for assistance.",
+      });
+    }
 
-// Check: Agar user SUPERADMIN nahi hai, TABHI isActive check karein
-if (user.role !== 'SUPERADMIN' && !restaurant.isActive) {
-  return res.status(403).json({
-    success: false,
-    message: "Your restaurant account is currently inactive. Please contact support for assistance.",
-  });
-}
+    // --- NEW: SUBSCRIPTION & RENEWAL CHECK ---
+    // Agar owner hai, toh check karo ki subscription active hai ya nahi
+    if (user.role === "OWNER") {
+      const isPastDue = restaurant.subscriptionStatus === "PAST_DUE";
+      const isCanceled = restaurant.subscriptionStatus === "CANCELED";
+
+      if (isPastDue || isCanceled) {
+        return res.status(403).json({
+          success: false,
+          requiresSubscription: true, // Frontend isse catch karke payment page par bhejega
+          restaurantId: restaurant._id,
+          message:
+            "Your subscription has expired or is past due. Please renew to access your dashboard.",
+        });
+      }
+    }
+    // ----------------------------------------
 
     generateTokenAndSetCookie(res, user._id);
 
@@ -113,7 +177,38 @@ if (user.role !== 'SUPERADMIN' && !restaurant.isActive) {
         email: user.email,
         role: user.role,
         restaurantId: user.restaurantId,
+        subscriptionStatus: restaurant.subscriptionStatus,
       },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Activate or Renew Subscription after Payment
+// @route   POST /api/v1/auth/renew-subscription
+exports.renewSubscription = async (req, res) => {
+  const { restaurantId, plan } = req.body;
+
+  try {
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Restaurant not found" });
+    }
+
+    // Update subscription details
+    restaurant.subscriptionStatus = "ACTIVE";
+    if (plan) {
+      restaurant.subscriptionPlan = plan; // e.g., 'PRO', 'ENTERPRISE'
+    }
+    await restaurant.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Subscription renewed successfully!",
+      data: restaurant,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -123,11 +218,11 @@ if (user.role !== 'SUPERADMIN' && !restaurant.isActive) {
 // @desc    Logout User / Clear Cookie
 // @route   POST /api/v1/auth/logout
 exports.logout = async (req, res) => {
-  res.cookie("jwt", "", { 
-    httpOnly: true, 
+  res.cookie("jwt", "", {
+    httpOnly: true,
     expires: new Date(0),
-    secure: true,      // Same config as login
-    sameSite: 'none' 
+    secure: true, // Same config as login
+    sameSite: "none",
   });
   res.status(200).json({ success: true, message: "Logged out successfully" });
 };
