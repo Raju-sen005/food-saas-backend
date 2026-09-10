@@ -80,6 +80,25 @@ const orderSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    // 🆕 SPLIT BILL SUPPORT — purane fields (paymentMethod/paymentStatus/paidAmount/
+    // dueAmount) ko hi reuse karta hai, isliye Payment.jsx ka DUE tab, Settle-due,
+    // getBillingStats — sab bina kisi change ke split-bill orders ko sahi handle
+    // karte hain. Ye naye fields sirf audit-trail aur receipt-display ke liye hain.
+    isSplitBill: { type: Boolean, default: false },
+    splitPaymentMethod: {
+      type: String,
+      enum: ["CASH", "UPI"],
+      default: null,
+    }, // 🆕 abhi collect kiya gaya partial-payment ka method
+    payments: [
+      {
+        method: { type: String, enum: ["CASH", "UPI"], required: true },
+        amount: { type: Number, required: true, min: 0 },
+        collectedAt: { type: Date, default: Date.now },
+      },
+    ], // 🆕 audit trail — split ya multiple partial collections ka poora history
+
     mergedTables: { type: [String], default: [] }, // 🔑 customer-side table-merge feature — other table(s) billed together with this order
     rejectReason: { type: String, default: "" },
   },

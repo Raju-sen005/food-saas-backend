@@ -4,6 +4,7 @@ const {
   placeOrder,
   placeCaptainOrder,
   placeCounterOrder,
+  placeCounterNewTableOrder,
   updateOrderStatus,
   getLiveAdminOrders,
   completeOrder,
@@ -12,6 +13,7 @@ const {
   getPreviousBillingStats,
   getKOTItems,
   markKOTPrinted,
+  splitBillPayment,
   shiftTableOrder,
   getTableOrder,
   updateDueCustomerDetails,
@@ -38,7 +40,13 @@ router.get(
   tenantContext,
   getBillingStats,
 );
-
+router.post(
+  "/counter-new-table",
+  protect,
+  authorize("OWNER", "MANAGER", "STAFF"),
+  tenantContext,
+  placeCounterNewTableOrder,
+);
 // Admin-isolated real-time state manipulation pipeline interfaces
 router.get(
   "/live",
@@ -62,6 +70,14 @@ router.patch(
   authorize("OWNER", "MANAGER", "STAFF"),
   tenantContext,
   markKOTPrinted,
+);
+
+router.patch(
+  "/:id/split-complete",
+  protect,
+  authorize("OWNER", "MANAGER", "STAFF"),
+  tenantContext,
+  splitBillPayment,
 );
 
 router.patch(

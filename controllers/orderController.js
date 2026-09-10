@@ -3,7 +3,7 @@ const Counter = require("../models/Counter");
 const MenuItem = require("../models/MenuItem");
 const Combo = require("../models/Combo");
 const Offer = require("../models/Offer");
-const Table = require("../models/Table")
+const Table = require("../models/Table");
 const { verifyTableToken } = require("../utils/tableToken");
 const Restaurant = require("../models/Restaurant");
 const {
@@ -715,6 +715,308 @@ exports.placeCaptainOrder = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to place Captain order",
+    });
+  }
+};
+
+// ============================================================
+// 🆕 COUNTER POS - CREATE NEW TABLE ORDER
+// Existing running-table append flow ko touch nahi karta.
+//
+// @route POST /api/v1/orders/counter-new-table
+//
+// IMPORTANT SECURITY:
+// - restaurantId JWT/user context se
+// - table server-side validate
+// - menu price server-side validate
+// - discount server-side calculate
+// - client totals completely ignored
+// ============================================================
+
+exports.placeCounterNewTableOrder = async (req, res) => {
+  try {
+    // =========================================================
+    // 1. AUTH / TENANT
+    // =========================================================
+
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const restaurantId = user.restaurantId;
+
+    if (!restaurantId) {
+      return res.status(403).json({
+        success: false,
+        message: "Restaurant context not found",
+      });
+    }
+
+    // =========================================================
+    // 2. REQUEST BODY
+    // =========================================================
+
+    const { tableNumber, items } = req.body;
+
+    // =========================================================
+    // 3. BASIC VALIDATION
+    // =========================================================
+
+    if (!tableNumber || !String(tableNumber).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Table number is required",
+      });
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Order items are required",
+      });
+    }
+
+    // Prevent unreasonable payload size.
+    // Quantity itself is already validated inside verifyAndPriceItems().
+    if (items.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Too many different items in one order",
+      });
+    }
+
+    const cleanTableNumber = String(tableNumber).trim();
+
+    if (
+      cleanTableNumber === "N/A" ||
+      cleanTableNumber === "PARCEL" ||
+      cleanTableNumber.length > 50
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid table number",
+      });
+    }
+
+    // =========================================================
+    // 4. 🔒 TABLE TENANT VALIDATION
+    //
+    // Client sirf tableNumber bhej sakta hai.
+    // Server verify karega:
+    //   restaurantId = logged-in user's restaurant
+    //   tableNumber = requested table
+    //   isActive = true
+    // =========================================================
+
+    const validTable = await Table.findOne({
+      restaurantId,
+      tableNumber: cleanTableNumber,
+      isActive: true,
+    })
+      .select("_id tableNumber")
+      .lean();
+
+    if (!validTable) {
+      return res.status(400).json({
+        success: false,
+        message: `Table ${cleanTableNumber} is invalid or inactive`,
+      });
+    }
+
+    // =========================================================
+    // 5. 🔒 SERVER-SIDE ITEM NORMALIZATION
+    //
+    // Client price/name/discount ko trust nahi karna.
+    // =========================================================
+
+    const normalizedRawItems = items.map((item) => ({
+      itemId: item.menuItem || item.combo || item.itemId,
+      itemType: item.catalogType === "COMBO" ? "COMBO" : "SINGLE",
+      quantity: item.quantity,
+      notes: item.notes,
+    }));
+
+    // =========================================================
+    // 6. 🔒 SERVER-SIDE PRICE + AVAILABILITY
+    // =========================================================
+
+    let verifiedItems;
+    let computedSubtotal;
+
+    try {
+      ({ verifiedItems, computedSubtotal } = await verifyAndPriceItems(
+        normalizedRawItems,
+        restaurantId,
+      ));
+    } catch (verifyErr) {
+      return res.status(verifyErr.statusCode || 400).json({
+        success: false,
+        message: verifyErr.message,
+      });
+    }
+
+    // =========================================================
+    // 7. 🔒 SERVER-SIDE DISCOUNT
+    // =========================================================
+
+    const { totalDiscount: computedDiscount, itemDiscountMap } =
+      await computeVerifiedDiscount(verifiedItems, restaurantId);
+
+    const pricedItems = applyItemDiscounts(verifiedItems, itemDiscountMap);
+
+    // =========================================================
+    // 8. TAX
+    //
+    // Current system mein tax calculation 0 hai.
+    // Existing architecture ke saath same rakha gaya hai.
+    // =========================================================
+
+    const computedTax = 0;
+
+    const computedTotal = Math.max(
+      0,
+      computedSubtotal - computedDiscount + computedTax,
+    );
+
+    if (computedTotal <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Order total must be greater than zero",
+      });
+    }
+
+    // =========================================================
+    // 9. 🔒 IMPORTANT:
+    // CHECK WHETHER TABLE ALREADY HAS RUNNING ORDER
+    //
+    // New Table Order button existing order ko modify nahi karega.
+    // Agar table already occupied hai -> reject.
+    // =========================================================
+
+    const existingOrder = await Order.findOne({
+      restaurantId,
+      status: {
+        $in: ["PENDING", "ACCEPTED"],
+      },
+      $or: [
+        {
+          tableNumber: cleanTableNumber,
+        },
+        {
+          mergedTables: cleanTableNumber,
+        },
+      ],
+    })
+      .select("_id orderId tableNumber status")
+      .lean();
+
+    if (existingOrder) {
+      return res.status(409).json({
+        success: false,
+        code: "TABLE_ALREADY_RUNNING",
+        message: `Table ${cleanTableNumber} already has a running order`,
+        order: {
+          _id: existingOrder._id,
+          orderId: existingOrder.orderId,
+          tableNumber: existingOrder.tableNumber,
+          status: existingOrder.status,
+        },
+      });
+    }
+
+    // =========================================================
+    // 10. GENERATE UNIQUE ORDER ID
+    // =========================================================
+
+    const uniqueOrderId = await generateReadableOrderId(restaurantId);
+
+    // =========================================================
+    // 11. TAX RATE
+    // =========================================================
+
+    const taxableAmount = Math.max(0, computedSubtotal - computedDiscount);
+
+    const taxRate = taxableAmount > 0 ? computedTax / taxableAmount : 0;
+
+    // =========================================================
+    // 12. CREATE BRAND NEW DINE-IN ORDER
+    // =========================================================
+
+    const newOrder = await Order.create({
+      restaurantId,
+
+      orderId: uniqueOrderId,
+
+      customerName: "Counter Dine-In",
+
+      customerPhone: "",
+
+      // 🔒 Schema-compatible enum value
+      orderType: "DINE_IN",
+
+      // 🔒 Server-validated table
+      tableNumber: validTable.tableNumber,
+
+      mergedTables: [],
+
+      items: pricedItems,
+
+      subtotal: computedSubtotal,
+
+      discount: computedDiscount,
+
+      tax: computedTax,
+
+      taxRate,
+
+      total: computedTotal,
+
+      status: "PENDING",
+
+      paymentMethod: null,
+
+      paymentStatus: "UNPAID",
+
+      paidAmount: 0,
+
+      dueAmount: 0,
+
+      paymentCollectedAt: null,
+    });
+
+    // =========================================================
+    // 13. 🔥 REALTIME MULTI-TENANT SOCKET EVENT
+    //
+    // IMPORTANT:
+    // Restaurant ID server context se aa raha hai.
+    // Event sirf isi restaurant ke room mein jayega.
+    // =========================================================
+
+    emitToRestaurant(restaurantId, "NEW_ORDER_RECEIVED", newOrder);
+
+    emitToRestaurant(restaurantId, "PLAY_NOTIFICATION_SOUND", newOrder);
+
+    // =========================================================
+    // 14. RESPONSE
+    // =========================================================
+
+    return res.status(201).json({
+      success: true,
+      isExistingOrder: false,
+      message: `New order created for Table ${cleanTableNumber}`,
+      order: newOrder,
+    });
+  } catch (error) {
+    console.error("Counter New Table Order Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to create new table order",
     });
   }
 };
@@ -1601,6 +1903,133 @@ exports.settleDuePayment = async (req, res) => {
     });
   } catch (error) {
     console.error("Settle Due Payment Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Split bill — abhi partial amount collect karo (CASH/UPI), baaki DUE mein record ho jayega
+// @route   PATCH /api/v1/orders/:id/split-complete
+exports.splitBillPayment = async (req, res) => {
+  try {
+    const { paymentMethod, paidAmount } = req.body;
+
+    const allowedMethods = ["CASH", "UPI"];
+    if (!paymentMethod || !allowedMethods.includes(paymentMethod)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Valid payment method is required for the partial payment: CASH or UPI",
+      });
+    }
+
+    const partialAmount = Number(paidAmount);
+    if (!Number.isFinite(partialAmount) || partialAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid partial payment amount is required",
+      });
+    }
+
+    const order = await Order.findOne({
+      _id: req.params.id,
+      restaurantId: req.user.restaurantId,
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // Prevent accidental duplicate completion/payment recording
+    if (order.status === "COMPLETED") {
+      return res.status(409).json({
+        success: false,
+        message: "This order has already been billed.",
+        data: order,
+      });
+    }
+
+    if (order.status !== "ACCEPTED") {
+      return res.status(400).json({
+        success: false,
+        message: "Only accepted orders can be billed.",
+      });
+    }
+
+    const totalAmount = Number(order.total || 0);
+
+    if (totalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Order total must be greater than zero.",
+      });
+    }
+
+    // 🔒 Partial amount total se kam hi hona chahiye — poora amount collect karna ho
+    // to /complete (normal CASH/UPI/DUE) endpoint use karo, ye sirf partial ke liye hai
+    if (partialAmount >= totalAmount) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Partial amount must be less than the total bill. Use the regular payment option to collect the full amount.",
+      });
+    }
+
+    // Paisa 2-decimal tak round — floating point drift avoid karne ke liye
+    const roundedPartial = Math.round(partialAmount * 100) / 100;
+    const remainingDue = Math.round((totalAmount - roundedPartial) * 100) / 100;
+
+    // ==========================================
+    // SPLIT PAYMENT — remaining amount ko existing
+    // DUE mechanism mein hi record karte hain
+    // ==========================================
+
+    order.status = "COMPLETED";
+    order.isSplitBill = true;
+    order.splitPaymentMethod = paymentMethod;
+    order.paymentMethod = "DUE"; // 🔑 baaki balance abhi bhi due hai
+    order.paymentStatus = "DUE";
+    order.paidAmount = roundedPartial;
+    order.dueAmount = remainingDue;
+    order.paymentCollectedAt = null; // poora payment abhi collect nahi hua
+
+    order.payments.push({
+      method: paymentMethod,
+      amount: roundedPartial,
+      collectedAt: new Date(),
+    });
+
+    await order.save();
+
+    // ==========================================
+    // REALTIME UPDATE
+    // ==========================================
+
+    emitToRestaurant(order.restaurantId, "ORDER_STATUS_UPDATED", order);
+
+    // ==========================================
+    // RESPONSE
+    // ==========================================
+
+    return res.status(200).json({
+      success: true,
+      message: `₹${roundedPartial.toFixed(2)} collected via ${paymentMethod}. ₹${remainingDue.toFixed(2)} recorded as due.`,
+      data: order,
+      payment: {
+        method: paymentMethod,
+        paidNow: roundedPartial,
+        remainingDue,
+        total: totalAmount,
+      },
+    });
+  } catch (error) {
+    console.error("Split Bill Payment Error:", error);
 
     return res.status(500).json({
       success: false,

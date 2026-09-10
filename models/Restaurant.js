@@ -23,6 +23,20 @@ const restaurantSchema = new mongoose.Schema(
     // 💳 New UPI & Payment Integration Fields
     upiId: { type: String, default: "" },
     upiQrCode: { type: String, default: "" },
+    // Business Compliance Details
+    fssaiNumber: {
+      type: String,
+      default: "",
+      trim: true,
+      uppercase: true,
+    },
+
+    gstNumber: {
+      type: String,
+      default: "",
+      trim: true,
+      uppercase: true,
+    },
     qrCodeUrl: { type: String, default: "" },
     qrTokenVersion: { type: Number, default: 0 },
     subscriptionPlan: {
