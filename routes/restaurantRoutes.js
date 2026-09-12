@@ -6,6 +6,9 @@ const {
   updateRestaurantProfile,
   getPublicRestaurantDetails,
   getRestaurantProfile,
+   requestUpiChangeOtp,
+  verifyUpiChangeOtp,
+  changeUpiId,
 } = require("../controllers/restaurantController");
 
 const {
@@ -24,6 +27,47 @@ const upload =
 | ADMIN PROFILE READ
 |--------------------------------------------------------------------------
 */
+/*
+|--------------------------------------------------------------------------
+| UPI CHANGE SECURITY FLOW
+|--------------------------------------------------------------------------
+*/
+
+/*
+ * Step 1:
+ * Send OTP to authenticated OWNER email.
+ */
+router.post(
+  "/profile/upi/request-otp",
+  protect,
+  authorize("OWNER"),
+  tenantContext,
+  requestUpiChangeOtp
+);
+
+/*
+ * Step 2:
+ * Verify OTP.
+ */
+router.post(
+  "/profile/upi/verify-otp",
+  protect,
+  authorize("OWNER"),
+  tenantContext,
+  verifyUpiChangeOtp
+);
+
+/*
+ * Step 3:
+ * Change UPI after successful verification.
+ */
+router.patch(
+  "/profile/upi",
+  protect,
+  authorize("OWNER"),
+  tenantContext,
+  changeUpiId
+);
 
 router.get(
   "/profile",
